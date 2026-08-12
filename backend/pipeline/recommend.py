@@ -27,6 +27,46 @@ def generate_recommendation(risk_analysis: dict) -> str:
             
     return " ".join(recommendations)
 
+def analyze_audit_metadata(agent_id: str, risk_level: str, risk_analysis: dict) -> tuple:
+    rules = risk_analysis.get("matched_rules", [])
+    explanation = risk_analysis.get("explanation", "").lower()
+    
+    # 1. Determine Risk Score
+    if risk_level == "High":
+        if any("Rule (c)" in r for r in rules) or "injection" in explanation or "poisoned" in explanation:
+            risk_score = 98
+        elif any("Rule (a)" in r for r in rules) or "email" in explanation or "recipient" in explanation:
+            risk_score = 92
+        else:
+            risk_score = 85
+    elif risk_level == "Medium":
+        if any("Rule (b)" in r for r in rules) or "query" in explanation or "rows" in explanation:
+            risk_score = 78
+        else:
+            risk_score = 65
+    else:
+        risk_score = 25
+
+    # 2. Determine Execution Type
+    if any("Rule (c)" in r for r in rules) or "injection" in explanation:
+        execution_type = "Hijacked AI Agent (Prompt Injection)"
+    elif "marketing" in agent_id or "support" in agent_id or "ops" in agent_id:
+        execution_type = "Autonomous AI Agent (Service Account)"
+    else:
+        execution_type = "Human Co-Signed (Employee Approval)"
+
+    # 3. Determine Affected Data
+    if any("Rule (b)" in r for r in rules) or "rows" in explanation:
+        affected_data = "4,800 Customer Profile & CRM Billing rows (Full database query)"
+    elif any("Rule (c)" in r for r in rules) or "injection" in explanation:
+        affected_data = "Customer billing ledgers, API keys, and account transaction histories"
+    elif any("Rule (a)" in r for r in rules) or "email" in explanation:
+        affected_data = "Marketing segmentation details, customer contact lists, and profiling parameters"
+    else:
+        affected_data = "General customer ticket entries & transaction logs"
+
+    return risk_score, execution_type, affected_data
+
 def save_and_deduplicate_finding(db: DbSession, agent_id: str, risk_analysis: dict, event_id: int):
     """
     Saves a finding. If a finding already exists for this agent within a 3-second window, 
@@ -35,6 +75,9 @@ def save_and_deduplicate_finding(db: DbSession, agent_id: str, risk_analysis: di
     risk_level = risk_analysis.get("risk_level", "Low")
     explanation = risk_analysis.get("explanation", "")
     recommendation = generate_recommendation(risk_analysis)
+    
+    # Calculate audit metadata
+    risk_score, execution_type, affected_data = analyze_audit_metadata(agent_id, risk_level, risk_analysis)
     
     # 3-second threshold (ISO comparison is direct in SQLite text fields)
     threshold_time = (datetime.datetime.utcnow() - datetime.timedelta(seconds=3)).isoformat()
@@ -55,6 +98,10 @@ def save_and_deduplicate_finding(db: DbSession, agent_id: str, risk_analysis: di
         existing_map_val = level_map.get(existing_finding["risk_level"], 1)
         
         merged_risk = risk_level if current_map_val > existing_map_val else existing_finding["risk_level"]
+        
+        # Recalculate audit parameters based on merged risk
+        merged_score, merged_exec_type, merged_affected_data = analyze_audit_metadata(agent_id, merged_risk, risk_analysis)
+        final_score = max(existing_finding.get("risk_score", 10), merged_score)
             
         # Merge Explanations (avoid duplicates)
         new_exp_sentences = [s.strip() for s in explanation.split(".") if s.strip()]
@@ -84,14 +131,15 @@ def save_and_deduplicate_finding(db: DbSession, agent_id: str, risk_analysis: di
         # Update SQLite record
         new_timestamp = datetime.datetime.utcnow().isoformat()
         db.execute(
-            "UPDATE findings SET risk_level = ?, explanation = ?, recommendation = ?, events_involved = ?, timestamp = ? WHERE id = ?",
-            (merged_risk, merged_explanation, merged_recommendation, json.dumps(events), new_timestamp, existing_finding["id"])
+            "UPDATE findings SET risk_level = ?, explanation = ?, recommendation = ?, events_involved = ?, timestamp = ?, risk_score = ?, execution_type = ?, affected_data = ? WHERE id = ?",
+            (merged_risk, merged_explanation, merged_recommendation, json.dumps(events), new_timestamp, final_score, merged_exec_type, merged_affected_data, existing_finding["id"])
         )
     else:
         # Create a new finding in SQLite
         new_timestamp = datetime.datetime.utcnow().isoformat()
         db.execute(
-            "INSERT INTO findings (agent_id, timestamp, risk_level, explanation, recommendation, status, events_involved) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (agent_id, new_timestamp, risk_level, explanation, recommendation, "Active", json.dumps([event_id]))
+            "INSERT INTO findings (agent_id, timestamp, risk_level, explanation, recommendation, status, events_involved, risk_score, execution_type, affected_data) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (agent_id, new_timestamp, risk_level, explanation, recommendation, "Active", json.dumps([event_id]), risk_score, execution_type, affected_data)
         )
+

@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [allFindings, setAllFindings] = useState([]);
   const [previousFindingIds, setPreviousFindingIds] = useState(new Set());
   const [newlyAddedFindingIds, setNewlyAddedFindingIds] = useState(new Set());
+  const [expandedFindingId, setExpandedFindingId] = useState(null);
 
   // 1. Poll for general agent lists and all findings every 3 seconds (only if logged in)
   useEffect(() => {
@@ -496,29 +497,136 @@ export default function Dashboard() {
               ) : (
                 allFindings.map((finding) => {
                   const isNew = newlyAddedFindingIds.has(finding.id);
+                  const isExpanded = expandedFindingId === finding.id;
+                  
                   return (
                     <div 
                       key={finding.id}
                       className={`card ${isNew ? 'flash-highlight' : ''}`}
+                      onClick={() => setExpandedFindingId(isExpanded ? null : finding.id)}
                       style={{
                         padding: '16px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '10px'
+                        gap: '10px',
+                        cursor: 'pointer',
+                        borderColor: isExpanded ? 'var(--accent-purple)' : 'var(--border-color)',
+                        transition: 'all 0.2s ease',
+                        background: isExpanded ? 'rgba(139, 92, 246, 0.03)' : 'rgba(18, 22, 32, 0.4)'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'white' }}>
-                          {finding.agent_id}
-                        </span>
-                        <span className={`badge ${getRiskClass(finding.risk_level)}`}>
-                          {finding.risk_level}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: '700', fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'white' }}>
+                            {finding.agent_id}
+                          </span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            {new Date(finding.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className={`badge ${getRiskClass(finding.risk_level)}`}>
+                            {finding.risk_level}
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {isExpanded ? '▲' : '▼'}
+                          </span>
+                        </div>
                       </div>
                       
                       <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
                         <strong>Risk Details:</strong> {finding.explanation}
                       </div>
+
+                      {/* Expandable Security Inspection Suite */}
+                      {isExpanded && (
+                        <div style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '10px', 
+                          paddingTop: '8px', 
+                          marginTop: '4px',
+                          borderTop: '1px dashed var(--border-color)' 
+                        }}>
+                          {/* 1. Risk Score Gauge */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '90px' }}>Risk Score:</span>
+                            <div style={{ flex: 1, height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${finding.risk_score || 25}%`,
+                                height: '100%',
+                                background: finding.risk_level === 'High' ? 'var(--risk-high)' : finding.risk_level === 'Medium' ? 'var(--risk-medium)' : 'var(--risk-low)',
+                                boxShadow: '0 0 6px currentColor'
+                              }}></div>
+                            </div>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: finding.risk_level === 'High' ? 'var(--risk-high)' : finding.risk_level === 'Medium' ? 'var(--risk-medium)' : 'var(--risk-low)', width: '45px', textAlign: 'right' }}>
+                              {finding.risk_score || 25}/100
+                            </span>
+                          </div>
+
+                          {/* 2. Execution Authority */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--text-secondary)', width: '90px' }}>Execution Type:</span>
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: '600',
+                              background: finding.execution_type?.includes('Hijack') ? 'rgba(236, 72, 153, 0.1)' : 'rgba(139, 92, 246, 0.1)',
+                              color: finding.execution_type?.includes('Hijack') ? 'var(--accent-pink)' : 'var(--accent-purple)',
+                              border: '1px solid rgba(255,255,255,0.05)'
+                            }}>
+                              {finding.execution_type || 'Autonomous AI Agent'}
+                            </span>
+                          </div>
+
+                          {/* 3. Compromised Corporate Asset Scope */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Affected Corporate Scope:</span>
+                            <span style={{
+                              padding: '6px 10px',
+                              background: 'rgba(6, 182, 212, 0.04)',
+                              border: '1px solid rgba(6, 182, 212, 0.15)',
+                              borderRadius: '5px',
+                              fontSize: '11px',
+                              color: 'var(--accent-cyan)',
+                              fontFamily: 'var(--font-mono)',
+                              wordBreak: 'break-all'
+                            }}>
+                              💾 {finding.affected_data || 'General corporate logs'}
+                            </span>
+                          </div>
+
+                          {/* 4. Action / Mitigation Log */}
+                          {finding.status !== "Active" && finding.audit_log && (() => {
+                            try {
+                              const audit = typeof finding.audit_log === 'string' ? JSON.parse(finding.audit_log) : finding.audit_log;
+                              return (
+                                <div style={{
+                                  padding: '8px',
+                                  background: 'rgba(16, 185, 129, 0.03)',
+                                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  color: 'var(--risk-low)'
+                                }}>
+                                  <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                    🛡️ Remediation Efficacy Verified
+                                  </div>
+                                  <div><strong>Audited By:</strong> {audit.reviewer}</div>
+                                  <div><strong>Role:</strong> {audit.role}</div>
+                                  <div><strong>Enforced at:</strong> {new Date(audit.timestamp).toLocaleString()}</div>
+                                  <div style={{ marginTop: '5px', color: 'var(--text-secondary)', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px', fontStyle: 'italic' }}>
+                                    "{audit.remediation_status}"
+                                  </div>
+                                </div>
+                              );
+                            } catch(err) {
+                              return null;
+                            }
+                          })()}
+                        </div>
+                      )}
   
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '4px', borderLeft: '2px solid var(--accent-cyan)' }}>
                         <strong>Recommendation:</strong> {finding.recommendation}
@@ -533,17 +641,15 @@ export default function Dashboard() {
                           <button 
                             className="btn btn-primary"
                             style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px' }}
-                            onClick={() => handleRecommendAction(finding.id)}
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent card collapse/expand on button click
+                              handleRecommendAction(finding.id);
+                            }}
                           >
                             Recommend Action
                           </button>
                         )}
                       </div>
-                      {finding.status !== "Active" && (
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'right', fontStyle: 'italic', marginTop: '2px' }}>
-                          Audit log: Approved by {username} ({selectedRole})
-                        </div>
-                      )}
                     </div>
                   );
                 })

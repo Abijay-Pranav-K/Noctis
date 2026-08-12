@@ -32,7 +32,7 @@ def init_db():
     );
     """)
     
-    # Create Findings Table
+    # Create Findings Table with detailed audit capabilities
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS findings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,13 +42,17 @@ def init_db():
         explanation TEXT NOT NULL,
         recommendation TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'Active',
-        events_involved TEXT NOT NULL
+        events_involved TEXT NOT NULL,
+        risk_score INTEGER DEFAULT 10,
+        execution_type TEXT DEFAULT 'Autonomous AI Agent',
+        affected_data TEXT DEFAULT 'General Corporate logs',
+        audit_log TEXT
     );
     """)
     
     conn.commit()
     conn.close()
-    print("[Noctis DB] Database tables initialized successfully using built-in sqlite3.")
+    print("[Noctis DB] Database tables initialized successfully with Audit columns.")
 
 # Initialize at module load
 init_db()
@@ -84,10 +88,3 @@ class DbSession:
         cursor.execute(query, params)
         row = cursor.fetchone()
         return dict(row) if row else None
-
-def get_db():
-    db = DbSession()
-    try:
-        yield db
-    finally:
-        db.close()

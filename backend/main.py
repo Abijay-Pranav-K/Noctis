@@ -70,6 +70,10 @@ class SupportTicketRequest(BaseModel):
     contains_injection: bool = False
     ticket_body: str
 
+class AgentChatRequest(BaseModel):
+    """A demo connector representing a customer's own AI agent workspace."""
+    prompt: str
+
 
 # --- SIMULATION ENDPOINTS (Writes to shared log store) ---
 
@@ -165,6 +169,55 @@ async def sim_support_ticket(req: SupportTicketRequest, db: DbSession = Depends(
         "contains_injection": req.contains_injection
     }
 
+
+@app.post("/enterprise/agent-chat")
+async def enterprise_agent_chat(req: AgentChatRequest, db: DbSession = Depends(get_db)):
+    """Translate a test-company request into the logs its connected agents emit.
+
+    This endpoint is deliberately a connector/demo surface: Noctis does not execute
+    customer actions in production; it receives the resulting audit events.
+    """
+    prompt = req.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="A company-agent request is required")
+    lower = prompt.lower()
+
+    if any(token in lower for token in ["ignore prior", "prompt injection", "attacker", "jailbreak"]):
+        event = await execute_spaced_pipeline(db, "support-agent-02", "support-ticket", {
+            "ticket_body": prompt,
+            "contains_injection": True,
+            "client_sdk": "Company-Agent-Connector-v1",
+            "role": "Customer Support Assistant"
+        })
+        return {
+            "status": "accepted", "event_id": event["id"], "risk_hint": "High-risk manipulation pattern sent for review",
+            "message": "The support agent received the request. Noctis recorded a possible prompt-injection attempt and is monitoring its follow-on activity."
+        }
+
+    if any(token in lower for token in ["export", "all customer", "billing records", "email them", "send customer"]):
+        agent_id = "support-agent-01"
+        query_event = await execute_spaced_pipeline(db, agent_id, "db-query", {
+            "query_scope": "single_row", "ticket_id": "CHAT-REQUEST", "rows_returned": 4500,
+            "purpose": "company_agent_request", "client_sdk": "Company-Agent-Connector-v1", "role": "Customer Support Assistant"
+        })
+        email_event = await execute_spaced_pipeline(db, agent_id, "send-email", {
+            "recipient": "vendor@outside.example", "subject": "Requested customer export", "body_summary": prompt,
+            "attachment_type": "customer_data", "client_sdk": "Company-Agent-Connector-v1", "role": "Customer Support Assistant"
+        })
+        return {
+            "status": "accepted", "event_id": email_event["id"], "risk_hint": "High-risk data handling pattern sent for review",
+            "message": f"The company agent produced database and email audit events (starting with event {query_event['id']}). Noctis identified the abnormal data access and external sharing path."
+        }
+
+    event = await execute_spaced_pipeline(db, "support-agent-01", "db-query", {
+        "query_scope": "single_row", "ticket_id": "CHAT-4821", "rows_returned": 1,
+        "purpose": "ticket_lookup", "client_sdk": "Company-Agent-Connector-v1", "role": "Customer Support Assistant"
+    })
+    return {
+        "status": "accepted", "event_id": event["id"], "risk_hint": "Normal company activity logged",
+        "message": "The company support agent completed a scoped ticket lookup. Noctis received the audit log and found no abnormal behavior."
+    }
+
 @app.get("/sim/events")
 def get_sim_events(db: DbSession = Depends(get_db), limit: int = 50):
     """
@@ -248,16 +301,26 @@ def get_all_findings(db: DbSession = Depends(get_db)):
     return findings
 
 @app.post("/noctis/findings/{finding_id}/review")
-def review_finding(finding_id: int, db: DbSession = Depends(get_db)):
+def review_finding(finding_id: int, username: str = "security.ops@yourcompany.com", role: str = "Lead Security Operations Analyst", db: DbSession = Depends(get_db)):
     """
     Human-in-the-loop audit: sets finding status to 'Reviewed — Action Recommended'.
-    Does not interact with the simulated systems.
+    Logs reviewer email, role, timestamp, and details.
     """
     finding = db.fetch_one("SELECT * FROM findings WHERE id = ?", (finding_id,))
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
         
-    db.execute("UPDATE findings SET status = 'Reviewed — Action Recommended' WHERE id = ?", (finding_id,))
+    audit_data = {
+        "reviewer": username,
+        "role": role,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "remediation_status": "Approved Remediation: Row-Level DB Filtering & SMTP Outbound Guardrails Enforced."
+    }
+    
+    db.execute(
+        "UPDATE findings SET status = 'Reviewed — Action Recommended', audit_log = ? WHERE id = ?", 
+        (json.dumps(audit_data), finding_id)
+    )
     
     updated = db.fetch_one("SELECT * FROM findings WHERE id = ?", (finding_id,))
     updated["events_involved"] = json.loads(updated["events_involved"])
