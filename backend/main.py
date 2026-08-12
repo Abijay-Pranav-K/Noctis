@@ -231,6 +231,28 @@ def get_sim_events(db: DbSession = Depends(get_db), limit: int = 50):
 
 # --- NOCTIS DASHBOARD ENDPOINTS (Read-only access to findings) ---
 
+@app.get("/noctis/health")
+def get_health_status(db: DbSession = Depends(get_db)):
+    """
+    Returns connection and diagnostics status of database engines.
+    """
+    db_status = "Connected"
+    try:
+        db.fetch_all("SELECT 1")
+    except Exception:
+        db_status = "Disconnected"
+        
+    from backend.graph.store import Neo4jGraphStore
+    is_neo4j = isinstance(graph_store, Neo4jGraphStore)
+    graph_status = "Neo4j Connected (Port 7687)" if is_neo4j else "Active (In-Memory Fallback)"
+    
+    return {
+        "status": "Healthy",
+        "database": db_status,
+        "graph_store": graph_status,
+        "db_file": "noctis.db (SQLite)"
+    }
+
 @app.get("/noctis/agents")
 def get_discovered_agents(db: DbSession = Depends(get_db)):
     """

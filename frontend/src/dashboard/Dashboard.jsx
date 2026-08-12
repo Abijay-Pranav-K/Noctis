@@ -17,6 +17,8 @@ export default function Dashboard() {
   const [previousFindingIds, setPreviousFindingIds] = useState(new Set());
   const [newlyAddedFindingIds, setNewlyAddedFindingIds] = useState(new Set());
   const [expandedFindingId, setExpandedFindingId] = useState(null);
+  const [dbStatus, setDbStatus] = useState('Checking...');
+  const [graphStatus, setGraphStatus] = useState('Checking...');
 
   // 1. Poll for general agent lists and all findings every 3 seconds (only if logged in)
   useEffect(() => {
@@ -99,6 +101,20 @@ export default function Dashboard() {
         }
         setPreviousFindingIds(currentIds);
       }
+
+      // Fetch database connection health status
+      try {
+        const healthRes = await fetch('http://localhost:8000/noctis/health');
+        if (healthRes.ok) {
+          const healthData = await healthRes.json();
+          setDbStatus(`${healthData.database} (${healthData.db_file})`);
+          setGraphStatus(healthData.graph_store);
+        }
+      } catch (err) {
+        setDbStatus('Disconnected');
+        setGraphStatus('Error connecting to backend');
+      }
+
     } catch (e) {
       console.error("Error polling dashboard data", e);
     }
@@ -256,9 +272,21 @@ export default function Dashboard() {
         fontSize: '12px',
         color: 'var(--text-secondary)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#06b6d4', display: 'inline-block', boxShadow: '0 0 6px #06b6d4' }}></span>
-          <span>Logged in as: <strong style={{ color: 'white' }}>{username}</strong> ({selectedRole})</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 6px #10b981' }}></span>
+            <span>Logged in as: <strong style={{ color: 'white' }}>{username}</strong> ({selectedRole})</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
+            <span style={{ color: 'var(--text-muted)' }}>DB Connection:</span>
+            <span style={{ color: 'var(--accent-cyan)', fontWeight: '600' }}>{dbStatus}</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
+            <span style={{ color: 'var(--text-muted)' }}>Graph Engine:</span>
+            <span style={{ color: 'var(--accent-purple)', fontWeight: '600' }}>{graphStatus}</span>
+          </div>
         </div>
         <button 
           onClick={handleLogout}
@@ -644,6 +672,7 @@ export default function Dashboard() {
                             onClick={(e) => {
                               e.stopPropagation(); // Prevent card collapse/expand on button click
                               handleRecommendAction(finding.id);
+                              setExpandedFindingId(finding.id); // Auto-expand showing audited log details
                             }}
                           >
                             Recommend Action
