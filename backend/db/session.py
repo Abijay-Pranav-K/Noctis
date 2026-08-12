@@ -88,3 +88,11 @@ class DbSession:
         cursor.execute(query, params)
         row = cursor.fetchone()
         return dict(row) if row else None
+
+def get_db():
+    db = DbSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
