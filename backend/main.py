@@ -253,6 +253,14 @@ def get_health_status(db: DbSession = Depends(get_db)):
         "db_file": "noctis.db (SQLite)"
     }
 
+@app.get("/noctis/db-logs")
+def get_database_transaction_logs():
+    """
+    Returns the real-time list of SQL operations executed on the SQLite database.
+    """
+    from backend.db.session import SQL_LOGS
+    return SQL_LOGS
+
 @app.get("/noctis/agents")
 def get_discovered_agents(db: DbSession = Depends(get_db)):
     """

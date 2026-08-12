@@ -5,6 +5,8 @@ export default function Simulation() {
   const [triggering, setTriggering] = useState(null);
   const [message, setMessage] = useState('');
   const logEndRef = useRef(null);
+  const [dbLogs, setDbLogs] = useState([]);
+  const [activeTab, setActiveTab] = useState('events'); // 'events' | 'db'
 
   // --- DB Query Form State ---
   const [dbAgentId, setDbAgentId] = useState('support-agent-01');
@@ -34,7 +36,7 @@ export default function Simulation() {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  }, [logs, dbLogs, activeTab]);
 
   const fetchLogs = async () => {
     try {
@@ -42,6 +44,12 @@ export default function Simulation() {
       if (res.ok) {
         const data = await res.json();
         setLogs(data.reverse());
+      }
+      
+      const dbRes = await fetch('http://localhost:8000/noctis/db-logs');
+      if (dbRes.ok) {
+        const dbData = await dbRes.json();
+        setDbLogs(dbData);
       }
     } catch (e) {
       console.error("Error fetching simulation logs", e);
@@ -295,43 +303,104 @@ export default function Simulation() {
       {/* Right panel: Log activity */}
       <div className="panel-col">
         <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '4px', color: 'var(--text-primary)' }}>
-            Company Event Audit Store (Write-Only Feed)
-          </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-            This feed shows corporate transactions as they occur. Noctis reads this log stream asynchronously.
-          </p>
+          
+          {/* Dynamic Logging Panel Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '12px' }}>
+            <button 
+              onClick={() => setActiveTab('events')}
+              style={{
+                flex: 1,
+                padding: '10px 6px',
+                background: activeTab === 'events' ? 'rgba(139, 92, 246, 0.08)' : 'none',
+                border: 'none',
+                borderBottom: activeTab === 'events' ? '2px solid var(--accent-purple)' : 'none',
+                color: activeTab === 'events' ? 'white' : 'var(--text-secondary)',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '13px',
+                textAlign: 'center',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📊 Company Transaction Feed
+            </button>
+            <button 
+              onClick={() => setActiveTab('db')}
+              style={{
+                flex: 1,
+                padding: '10px 6px',
+                background: activeTab === 'db' ? 'rgba(6, 182, 212, 0.08)' : 'none',
+                border: 'none',
+                borderBottom: activeTab === 'db' ? '2px solid var(--accent-cyan)' : 'none',
+                color: activeTab === 'db' ? 'white' : 'var(--text-secondary)',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '13px',
+                textAlign: 'center',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              💻 SQLite SQL Database Auditor
+            </button>
+          </div>
 
           <div className="terminal" style={{ flex: 1 }}>
-            {logs.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>
-                Waiting for background events...
-              </div>
+            {activeTab === 'events' ? (
+              logs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>
+                  Waiting for background events...
+                </div>
+              ) : (
+                logs.map((log) => {
+                  let logClass = "benign";
+                  if (log.event_type === "db-query") logClass = "db-query";
+                  else if (log.event_type === "send-email") logClass = "send-email";
+                  else if (log.event_type === "support-ticket") logClass = "support-ticket";
+                  
+                  const timeString = new Date(log.timestamp).toLocaleTimeString();
+                  
+                  return (
+                    <div key={log.id} className={`terminal-line ${logClass}`}>
+                      <span className="terminal-timestamp">[{timeString}]</span>
+                      <span className="terminal-tag" style={{
+                        color: logClass === "db-query" ? "var(--accent-cyan)" :
+                               logClass === "send-email" ? "var(--accent-purple)" :
+                               logClass === "support-ticket" ? "var(--accent-pink)" : "var(--risk-low)"
+                      }}>
+                        {log.agent_id} // {log.event_type.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: '12px' }}>
+                        {JSON.stringify(log.payload)}
+                      </span>
+                    </div>
+                  );
+                })
+              )
             ) : (
-              logs.map((log) => {
-                let logClass = "benign";
-                if (log.event_type === "db-query") logClass = "db-query";
-                else if (log.event_type === "send-email") logClass = "send-email";
-                else if (log.event_type === "support-ticket") logClass = "support-ticket";
-                
-                const timeString = new Date(log.timestamp).toLocaleTimeString();
-                
-                return (
-                  <div key={log.id} className={`terminal-line ${logClass}`}>
-                    <span className="terminal-timestamp">[{timeString}]</span>
-                    <span className="terminal-tag" style={{
-                      color: logClass === "db-query" ? "var(--accent-cyan)" :
-                             logClass === "send-email" ? "var(--accent-purple)" :
-                             logClass === "support-ticket" ? "var(--accent-pink)" : "var(--risk-low)"
-                    }}>
-                      {log.agent_id} // {log.event_type.toUpperCase()}
-                    </span>
-                    <span style={{ fontSize: '12px' }}>
-                      {JSON.stringify(log.payload)}
-                    </span>
+              dbLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>
+                  No SQL queries executed yet. Submit sandbox items.
+                </div>
+              ) : (
+                dbLogs.map((logLine, idx) => (
+                  <div 
+                    key={idx} 
+                    className="terminal-line"
+                    style={{ 
+                      color: 'var(--accent-cyan)', 
+                      fontFamily: 'var(--font-mono)', 
+                      fontSize: '11px',
+                      borderLeft: '2px solid rgba(6, 182, 212, 0.4)',
+                      paddingLeft: '8px',
+                      marginBottom: '4px',
+                      wordBreak: 'break-all',
+                      lineHeight: '1.4'
+                    }}
+                  >
+                    {logLine}
                   </div>
-                );
-              })
+                ))
+              )
             )}
             <div ref={logEndRef} />
           </div>

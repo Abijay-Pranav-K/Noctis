@@ -5,6 +5,27 @@ import datetime
 
 DB_FILE = "./noctis.db"
 
+# Global list to store the last 50 SQL queries executed
+SQL_LOGS = []
+
+def add_sql_log(query: str, params=()):
+    """
+    Appends SQL transaction trace to in-memory logs and prints it to the console.
+    """
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    # Strip double spaces and line breaks for neat display
+    clean_query = " ".join(query.split())
+    # Format params for display
+    param_str = str(list(params)) if params else "None"
+    log_msg = f"[{timestamp}] SQL: {clean_query} | Params: {param_str}"
+    
+    SQL_LOGS.append(log_msg)
+    if len(SQL_LOGS) > 50:
+        SQL_LOGS.pop(0)
+        
+    # Print to console in cyan text for visibility
+    print(f"\033[96m[DATABASE ACTION] {log_msg}\033[0m")
+
 def get_db_connection():
     """
     Returns a connection to the SQLite database.
@@ -72,18 +93,21 @@ class DbSession:
         self.conn.close()
         
     def execute(self, query: str, params=()):
+        add_sql_log(query, params)
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         self.conn.commit()
         return cursor
         
     def fetch_all(self, query: str, params=()):
+        add_sql_log(query, params)
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
         
     def fetch_one(self, query: str, params=()):
+        add_sql_log(query, params)
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         row = cursor.fetchone()
@@ -95,4 +119,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
