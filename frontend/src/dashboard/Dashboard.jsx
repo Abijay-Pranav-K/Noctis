@@ -625,6 +625,31 @@ export default function Dashboard() {
                             </span>
                           </div>
 
+                          {/* Associated Transaction History */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Associated Transaction History:</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {agentDetails?.timeline?.filter(evt => finding.events_involved.includes(evt.id)).map((evt, idx) => (
+                                <div key={idx} style={{
+                                  padding: '6px 8px',
+                                  background: 'rgba(255,255,255,0.01)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '5px',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: '10px'
+                                }}>
+                                  <span style={{ color: 'var(--accent-cyan)' }}>[{new Date(evt.timestamp).toLocaleTimeString()}] {evt.event_type.toUpperCase()}</span>
+                                  <div style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>
+                                    {JSON.stringify(evt.payload)}
+                                  </div>
+                                </div>
+                              ))}
+                              {(!agentDetails?.timeline || agentDetails.timeline.filter(evt => finding.events_involved.includes(evt.id)).length === 0) && (
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Timeline traces archived or loading...</span>
+                              )}
+                            </div>
+                          </div>
+
                           {/* 4. Action / Mitigation Log */}
                           {finding.status !== "Active" && finding.audit_log && (() => {
                             try {
